@@ -15,10 +15,10 @@ import (
 // *** Types ***
 
 type Block struct {
-	Height    int       `json:"height"`
-	Data      BlockData `json:"data"`
-	Hash      string    `json:"hash"`
-	PrevHash  string    `json:"prevhash"`
+	Height   int       `json:"height"`
+	Data     BlockData `json:"data"`
+	Hash     string    `json:"hash"`
+	PrevHash string    `json:"prevhash"`
 }
 
 type BlockDataType int
@@ -49,14 +49,13 @@ type Item struct {
 }
 
 type Blockchain struct {
-    Blocks []Block
-    mutex  sync.Mutex
+	Blocks []Block
+	mutex  sync.Mutex
 }
-
 
 // *** Functions ***
 
-func CreateNewBlockchain() *Blockchain{
+func CreateNewBlockchain(ledger *Ledger) *Blockchain {
 
 	blockchain := &Blockchain{Blocks: make([]Block, 0)}
 
@@ -88,14 +87,14 @@ func CreateNewBlockchain() *Blockchain{
 
 	spew.Dump(genesisBlock)
 
-	blockchain.AddBlock(genesisBlock)
+	blockchain.AddBlock(genesisBlock, ledger)
 
 	return blockchain
 }
 
-func (bc *Blockchain) AddBlock(newBlock Block) error {
-    bc.mutex.Lock()
-    defer bc.mutex.Unlock()
+func (bc *Blockchain) AddBlock(newBlock Block, ledger *Ledger) error {
+	bc.mutex.Lock()
+	defer bc.mutex.Unlock()
 
 	//switch on the type of block
 	switch newBlock.Data.Type {
@@ -105,7 +104,7 @@ func (bc *Blockchain) AddBlock(newBlock Block) error {
 			return err
 		}
 		// update state
-		err := CurrentLedger.Update(newBlock)
+		err := ledger.Update(newBlock)
 		if err != nil {
 			log.Println("Failed to update blockchain state:", err)
 			return errors.New("invalid ledger update")
@@ -124,7 +123,7 @@ func (bc *Blockchain) AddBlock(newBlock Block) error {
 		return errors.New("invalid block type")
 	}
 
-    bc.Blocks = append(bc.Blocks, newBlock)
+	bc.Blocks = append(bc.Blocks, newBlock)
 
 	// check for expired problem and add a rewarding transaction if there is a solution
 	problemSolutionPair := bc.CheckForExpiredProblem()
@@ -146,9 +145,9 @@ func (bc *Blockchain) AddBlock(newBlock Block) error {
 		return errors.New("failed to generate rewarding transaction block")
 	}
 
-	bc.AddBlock(newTransactionBlock)
+	bc.AddBlock(newTransactionBlock, ledger)
 
-    return nil
+	return nil
 }
 
 func (bc *Blockchain) GetBlock(blockHeight int) Block {
@@ -158,8 +157,6 @@ func (bc *Blockchain) GetBlock(blockHeight int) Block {
 		log.Println("Block height out of range")
 		log.Println("Blockchain:")
 		spew.Dump(bc.Blocks)
-		log.Println("Blockchain State:")
-		spew.Dump(CurrentLedger)
 		panic("Block height out of range")
 	}
 	return bc.Blocks[blockHeight]

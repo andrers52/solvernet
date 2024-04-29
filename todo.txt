@@ -1,4 +1,3 @@
-- remove ledger global
 - port to C++
  - use crow as http server
  - use curl as http client

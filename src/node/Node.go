@@ -33,7 +33,7 @@ func (n *Node) checkOnline() error {
 	return nil
 }
 
-func (n *Node) StartNode(bc *Blockchain) {
+func (n *Node) StartNode(bc *Blockchain, ledger *Ledger) {
 	for {
 		err := n.checkOnline()
 		if err != nil {

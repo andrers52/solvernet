@@ -21,8 +21,8 @@ func HandleGetBlockchain(w http.ResponseWriter, r *http.Request, bc *Blockchain)
 	io.WriteString(w, string(bytes))
 }
 
-func HandleGetLedger(w http.ResponseWriter, r *http.Request) {
-	bytes, err := json.MarshalIndent(CurrentLedger, "", "  ")
+func HandleGetLedger(w http.ResponseWriter, r *http.Request, ledger *Ledger) {
+	bytes, err := json.MarshalIndent(ledger, "", "  ")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -30,17 +30,17 @@ func HandleGetLedger(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, string(bytes))
 }
 
-func HandleWriteProposedSolutionBlock(w http.ResponseWriter, r *http.Request, bc *Blockchain) {
+func HandleWriteProposedSolutionBlock(w http.ResponseWriter, r *http.Request, bc *Blockchain, ledger *Ledger) {
 	log.Println("Received proposed solution block")
-	WriteNewBlockData[KnapsackProposedSolution](w, r, bc.GenerateProposedSolutionBlock, bc)
+	WriteNewBlockData[KnapsackProposedSolution](w, r, bc.GenerateProposedSolutionBlock, bc, ledger)
 }
 
-func HandleWriteProblemBlock(w http.ResponseWriter, r *http.Request, bc *Blockchain) {
+func HandleWriteProblemBlock(w http.ResponseWriter, r *http.Request, bc *Blockchain, ledger *Ledger) {
 	log.Println("Received proposed problem block")
-	WriteNewBlockData[KnapsackProblem](w, r, bc.GenerateProblemBlock, bc)
+	WriteNewBlockData[KnapsackProblem](w, r, bc.GenerateProblemBlock, bc, ledger)
 }
 
-func WriteNewBlockData[T any](w http.ResponseWriter, r *http.Request, generateBlock func(T) (Block, error), bc *Blockchain) {
+func WriteNewBlockData[T any](w http.ResponseWriter, r *http.Request, generateBlock func(T) (Block, error), bc *Blockchain, ledger *Ledger) {
 	w.Header().Set("Content-Type", "application/json")
 	var data T
 	decoder := json.NewDecoder(r.Body)
@@ -64,7 +64,7 @@ func WriteNewBlockData[T any](w http.ResponseWriter, r *http.Request, generateBl
 		return
 	}
 
-	if err := bc.AddBlock(newBlock); err != nil {
+	if err := bc.AddBlock(newBlock, ledger); err != nil {
 		log.Println("New block has invalid data:", err)
 		respondWithJSON(w, http.StatusInternalServerError, err.Error())
 		return

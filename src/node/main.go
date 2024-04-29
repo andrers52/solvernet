@@ -16,7 +16,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	blockchain := CreateNewBlockchain()
+	var ledger *Ledger = NewLedger()
+	blockchain := CreateNewBlockchain(ledger)
 
 	port := os.Getenv("PORT") // Default port is set in .env file
 	if len(os.Args) > 1 {     // If a port is passed as an argument, use that instead
@@ -27,15 +28,17 @@ func main() {
 	router.HandleFunc("/api/heartbeat", HomeLink).Methods("GET")
 	router.HandleFunc("/api/home", HomeLink).Methods("GET")
 	router.HandleFunc("/api/get_blockchain", func(w http.ResponseWriter, r *http.Request) {
-        HandleGetBlockchain(w, r, blockchain)
-    }).Methods("GET")
-	router.HandleFunc("/api/get_current_state", HandleGetLedger).Methods("GET")
+		HandleGetBlockchain(w, r, blockchain)
+	}).Methods("GET")
+	router.HandleFunc("/api/get_ledger", func(w http.ResponseWriter, r *http.Request) {
+		HandleGetLedger(w, r, ledger)
+	}).Methods("GET")
 	router.HandleFunc("/api/send_problem", func(w http.ResponseWriter, r *http.Request) {
-        HandleWriteProblemBlock(w, r, blockchain)
-    }).Methods("POST")
+		HandleWriteProblemBlock(w, r, blockchain, ledger)
+	}).Methods("POST")
 	router.HandleFunc("/api/send_proposed_solution", func(w http.ResponseWriter, r *http.Request) {
-        HandleWriteProposedSolutionBlock(w, r, blockchain)
-    }).Methods("POST")
+		HandleWriteProposedSolutionBlock(w, r, blockchain, ledger)
+	}).Methods("POST")
 
 	headers := handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"})
 	methods := handlers.AllowedMethods([]string{"GET", "POST", "PUT", "HEAD", "OPTIONS"})
@@ -43,6 +46,6 @@ func main() {
 
 	log.Println("now serving on ", port)
 	node := InitNode(port)
-	go node.StartNode(blockchain)
+	go node.StartNode(blockchain, ledger)
 	log.Fatal(http.ListenAndServe(":"+port, handlers.CORS(headers, methods, origins)(router)))
 }
