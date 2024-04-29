@@ -1,0 +1,7 @@
+
+# Mac stuff
+.DS_Store
+
+# go
+bin
+pkg

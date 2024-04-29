@@ -1,0 +1,150 @@
+// this is the original state management object.
+// It should be reinstated some day for optimization
+// because when the blockchain grow reading it all the 
+// time will cost too much
+package main
+
+import (
+	"fmt"
+	"log"
+	"sync"
+)
+
+// BlockchainState encapsulates the state of the blockchain
+type BlockchainState struct {
+	mutex         sync.Mutex
+	CurrentHeight int `json:"current_height"` // current height of the blockchain
+	// map height to a pair problem to current best solution. When the blockchain reaches the height,
+	//the solution is considered final, a transaction is created to transfer the bounty and the pair is removed from the map
+	ProblemSolutionMap map[int]ProblemSolutionPair `json:"problem_solution_map"`
+
+	// TODO: add addresses current balances
+	AddressToBalance map[string]float64 `json:"address_to_balance"`
+}
+
+// NewBlockchainState creates a new BlockchainState with initialized maps
+func NewBlockchainState() *BlockchainState {
+	return &BlockchainState{
+		ProblemSolutionMap: make(map[int]ProblemSolutionPair),
+		AddressToBalance:   make(map[string]float64),
+		mutex:              sync.Mutex{},
+	}
+}
+
+// checkAndRemoveExpiredProblem removes expired problem-solution pairs and returns them
+func (bs *BlockchainState) checkAndRemoveExpiredProblem(currentHeight int) *ProblemSolutionPair {
+	var problemSolutionPairToReturn ProblemSolutionPair
+
+	for height := range bs.ProblemSolutionMap {
+		if int(height) <= currentHeight {
+			problemSolutionPairToReturn = bs.ProblemSolutionMap[height]
+			// Remove the solved problem from the map
+			bs.mutex.Lock()
+			delete(bs.ProblemSolutionMap, height)
+			bs.mutex.Unlock()
+			return &problemSolutionPairToReturn
+		}
+	}
+	return nil
+}
+
+// rewardExpiredProblem processes all expired problems at once
+func (bs *BlockchainState) rewardExpiredProblem(currentHeight int) error {
+	for {
+		pair := bs.checkAndRemoveExpiredProblem(currentHeight)
+		if pair == nil {
+			break // Exit when no more expired problems are found
+		}
+
+		if pair.Solution == nil {
+			log.Printf("Problem at height %d was not solved", pair.Problem.Address)
+			continue
+		}
+
+		tx := Transaction{
+			From:   pair.Problem.Address,
+			To:     pair.Solution.Address,
+			Amount: pair.Problem.Bounty,
+		}
+		log.Printf("Processing transaction from %s to %s of amount %f", tx.From, tx.To, tx.Amount)
+
+		transactionBlock, err := GenerateTransactionBlock(tx)
+		if err != nil {
+			return fmt.Errorf("failed to generate transaction block at height %d: %v", currentHeight, err)
+		}
+
+		if err := bs.AddBlock(transactionBlock); err != nil {
+			return fmt.Errorf("failed to update blockchain state: %v", err)
+		}
+	}
+	return nil
+}
+
+// AddBlock updates the state with a new block
+func (bs *BlockchainState) AddBlock(block Block) error {
+	bs.mutex.Lock()
+	defer bs.mutex.Unlock()
+
+	bs.CurrentHeight = block.Height // Update current height first
+
+	switch block.Data.Type {
+	case MonetaryTransaction:
+		return bs.addMonetaryTransaction(block)
+	case KnapsackProblemSubmission:
+		return bs.addProblemSubmission(block)
+	case KnapsackProposedSolutionSubmission:
+		return bs.addProposedSolutionSubmission(block)
+	default:
+		return fmt.Errorf("invalid block data type")
+	}
+}
+
+func (bs *BlockchainState) addMonetaryTransaction(block Block) error {
+	tx := block.Data.Transaction
+	if tx == nil {
+		return fmt.Errorf("transaction data not found")
+	}
+	// Initialize balances if not already present
+	if _, exists := bs.AddressToBalance[tx.From]; !exists {
+		bs.AddressToBalance[tx.From] = ADDRESS_INITIAL_BALANCE
+	}
+	if _, exists := bs.AddressToBalance[tx.To]; !exists {
+		bs.AddressToBalance[tx.To] = ADDRESS_INITIAL_BALANCE
+	}
+	// Update balances
+	bs.AddressToBalance[tx.From] -= tx.Amount
+	bs.AddressToBalance[tx.To] += tx.Amount
+	return nil
+}
+
+func (bs *BlockchainState) addProblemSubmission(block Block) error {
+	if block.Data.Problem == nil {
+		return fmt.Errorf("problem data not found")
+	}
+	problemHeight := block.Height + NUMBER_OF_BLOCKS_TO_SOLUTION
+	bs.ProblemSolutionMap[problemHeight] = ProblemSolutionPair{
+		Problem: block.Data.Problem,
+	}
+	return nil
+}
+
+func (bs *BlockchainState) addProposedSolutionSubmission(block Block) error {
+	if block.Data.Solution == nil {
+		return fmt.Errorf("solution data not found")
+	}
+	solutionHeight := block.Data.Solution.BlockHeight + NUMBER_OF_BLOCKS_TO_SOLUTION
+	if pair, exists := bs.ProblemSolutionMap[solutionHeight]; exists {
+		if pair.Solution == nil || block.Data.Solution.Value > pair.Solution.Value {
+			bs.ProblemSolutionMap[solutionHeight] = ProblemSolutionPair{
+				Problem:  pair.Problem,
+				Solution: block.Data.Solution,
+			}
+		}
+	} else {
+		bs.ProblemSolutionMap[solutionHeight] = ProblemSolutionPair{
+			Problem:  nil,
+			Solution: block.Data.Solution,
+		}
+	}
+	return nil
+}
